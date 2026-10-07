@@ -4,6 +4,8 @@ Essentially, it is a Python CGI (Common Gateway Interface) file converting iHear
 
 # Diagram
 
+```
+
 [ WiiMC ]
    │
    │  1. HTTP GET (?q=)
@@ -21,3 +23,5 @@ Essentially, it is a Python CGI (Common Gateway Interface) file converting iHear
    │  4. Converts IDs to Direct Streams & Formats PLS
    ▼
 [ WiiMC ] (Loads iheart.pls and plays streams directly)
+
+```
