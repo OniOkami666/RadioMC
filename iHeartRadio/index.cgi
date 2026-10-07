@@ -9,10 +9,10 @@ import urllib.request
 
 sys.stdout.write("Content-Type: audio/x-scpls; charset=UTF-8\r\n")
 sys.stdout.write('Content-Disposition: attachment; filename="iheart.pls"\r\n')
-sys.stdout.write("\r\n")  # Blank line terminates HTTP headers
+sys.stdout.write("\r\n")  
 sys.stdout.flush()
 
-# 2. Prevent FieldStorage stdin hang on GET requests
+# Prevent FieldStorage stdin hang on GET requests
 if os.environ.get('REQUEST_METHOD') == 'GET':
     os.environ.pop('CONTENT_LENGTH', None)
     os.environ.pop('CONTENT_TYPE', None)
