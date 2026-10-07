@@ -1,61 +1,82 @@
-#!/usr/bin/env python3
-
+#!/usr/bin/env -S python3 -u -W ignore
 from cgi import FieldStorage
-from sys import stdout
-import requests
+import os
+import sys
+import json
+import ssl
+import urllib.parse
+import urllib.request
 
-print("Content-Type: audio/x-scpls; charset=UTF-8")
-print("Content-Disposition: inline; filename=\"iheart.pls\"\n")
+sys.stdout.write("Content-Type: audio/x-scpls; charset=UTF-8\r\n")
+sys.stdout.write('Content-Disposition: attachment; filename="iheart.pls"\r\n')
+sys.stdout.write("\r\n")  # Blank line terminates HTTP headers
+sys.stdout.flush()
 
-print("[Playlist]")
+# 2. Prevent FieldStorage stdin hang on GET requests
+if os.environ.get('REQUEST_METHOD') == 'GET':
+    os.environ.pop('CONTENT_LENGTH', None)
+    os.environ.pop('CONTENT_TYPE', None)
 
 form = FieldStorage()
-base_url = "https://api.iheart.com"
-catalog = "/api/v1/catalog/searchAll"
+q = form.getvalue("q", "")
 
-keyword = ""
-search_url = f"{base_url}{catalog}"
-params = {}
+if not q:
+    query_string = os.environ.get('QUERY_STRING', '')
+    params = urllib.parse.parse_qs(query_string)
+    q = params.get('q', [''])[0]
 
-if "q" in form:
-    keyword = form["q"].value
-    params = {
-        "keywords": keyword,
-        "bestMatch": "true",
-        "limit": 10
-        "querystation": "true"
-    }
+q = q.strip()
+if not q:
+    q = "top"
 
-i = 1
+# Construct PLS Body (Line 1 MUST be [playlist])
+output = ["[playlist]"]
+entries = []
 
-if keyword:
-    try:
-        response = requests.get(search_url, params=params, headers={"User-Agent": "iHeartCGI-Proxy/1.0"})
+try:
+    api_url = f"https://api.iheart.com/api/v1/catalog/searchAll?keywords={urllib.parse.quote(q)}"
+    req = urllib.request.Request(
+        api_url, 
+        headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+    )
 
-        if response.status_code == 200:
-            data = response.json()
-            results = data.get("results", [])
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
 
-            for item in results:
-                if item.get("type") == "liveStation" or "streams" in item:
-                    station_name = item.get("name", "Unknown Station")
-                    streams = item.get("streams", {})
-                
-                # Prioritize Shoutcast/Icecast URLs 
-                stream_url = streams.get("shoutcast") or streams.get("secureShoutcast")
-                
-                if stream_url:
-                    stdout.write(f"File{i}={stream_url}\n")
-                    stdout.write(f"Title{i}={station_name}\n")
-                    stdout.write(f"Length{i}=-1\n") # -1 denotes a live web stream
-                    i += 1
+    with urllib.request.urlopen(req, timeout=5, context=ssl_ctx) as resp:
+        data = json.loads(resp.read().decode('utf-8'))
+        
+        stations = []
+        if isinstance(data, dict):
+            results = data.get('results', {})
+            if isinstance(results, dict):
+                stations = results.get('stations', [])
+            elif isinstance(results, list):
+                stations = results
+            if not stations:
+                stations = data.get('stations', [])
 
-        stdout.write(f"NumberOfEntries={i - 1}\n")
-        stdout.write("Version=2\n")
-    else:
-        stdout.write(f"File1=http://error\nTitle1=Error: iHeart API returned code {response.status_code}\nNumberOfEntries=1\nVersion=2\n")
+        for station in stations[:15]:
+            if isinstance(station, dict):
+                name = station.get('name') or station.get('callLetters') or 'iHeart Station'
+                station_id = station.get('id')
 
-    except Exception as e:
-        stdout.write(f"File1=http://error\nTitle1=Exception: {str(e)}\nNumberOfEntries=1\nVersion=2\n")
-else:
-    stdout.write("File1=http://error\nTitle1=Error: Provide ?q= search keyword\nNumberOfEntries=1\nVersion=2\n")
+                if station_id:
+                    stream_url = f"http://stream.revma.ihrhls.com/zc{station_id}"
+                    entries.append((name, stream_url))
+
+except Exception as e:
+    print(f"[DEBUG ERROR] {e}", file=sys.stderr)
+
+output.append(f"NumberOfEntries={len(entries)}")
+
+for i, (title, stream_url) in enumerate(entries, start=1):
+    output.append(f"File{i}={stream_url}")
+    output.append(f"Title{i}={title}")
+    output.append(f"Length{i}=-1")
+
+output.append("Version=2")
+
+sys.stdout.write("\r\n".join(output) + "\r\n")
+sys.stdout.flush()
