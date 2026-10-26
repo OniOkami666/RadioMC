@@ -20,7 +20,7 @@ Essentially, it is a Python CGI (Common Gateway Interface) file converting iHear
    ▼
 [ Server (CGI Script) ]
    │
-   │  4. Converts IDs to Direct Streams & Formats PLS
+   │  4. Converts IDs to Direct Streams & Formats M3U
    ▼
 [ WiiMC ] (Loads iheart.m3u and plays streams directly)
 
